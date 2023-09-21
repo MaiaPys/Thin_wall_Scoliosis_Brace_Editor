@@ -10,6 +10,7 @@ using System.Diagnostics;
 using UnityEngine.SocialPlatforms.Impl;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor.ShaderKeywordFilter;
 
 public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
 
@@ -42,7 +43,8 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
     private bool vertexSelected = false;
     private Vector3 selectedVertex, previousHandPosition;
     private int[] nearbyIndices;
-    private Vector3[] originalVertices, transformedVertices, nearbyVertices, storedVertices, displacedVertices;
+    private Vector3[] originalVertices, transformedVertices, nearbyVertices, displacedVertices;
+    private List<Vector3[]> storedVerticesList; 
     private VertexData[] nearbyVertexData, vertexDataRange;
     private PointOctree<VertexData> octree;
     private List<VertexData> nearbyVertexDataList = new List<VertexData>();
@@ -83,7 +85,8 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
         meshCollider.sharedMesh = null;
         meshCollider.sharedMesh = DeformedMesh;
 
-        originalVertices = storedVertices = DeformedMesh.vertices;
+        originalVertices = DeformedMesh.vertices;
+        storedVerticesList = new List<Vector3[]>();
 
         displacedVertices = new Vector3[ originalVertices.Length ];
         transformedVertices = new Vector3[ originalVertices.Length ];
@@ -105,6 +108,7 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
 
     //OnPointerDown means the user's index finger and thumb make contact (the down part of the click)
     public void OnPointerDown ( MixedRealityPointerEventData eventData ) {
+
         if ( !MoveAndRotateActivated ) {
             if ( DeformerActivated ) {
                 var pointerResult = eventData.Pointer.Result;
@@ -121,7 +125,7 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
                         vertexSelected = false;
                     } else {
                         vertexSelected = true;
-                        storedVertices = (Vector3[])displacedVertices.Clone(); //This vector is used for the undo button
+                        storedVerticesList.Add( (Vector3[])displacedVertices.Clone() ); //This vector list is used for the undo button
                     }
                 }
             }
@@ -133,7 +137,7 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
         if ( vertexSelected && manipulationTypeHandler.DeformMenuActivated ) {
             DeformMesh(eventData);
         } else if (vertexSelected && manipulationTypeHandler.EraseMenuActivated) {
-            //EraseVertices();
+            EraseVertices(nearbyVertexData);
         }
     }
 
@@ -198,15 +202,16 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
                     if ( worldVertex.z >= minPoint.z && worldVertex.z <= maxPoint.z ) {
                         nearbyVertexDataList.Add( vertexDataRange[ i ]);
                         j++;
-
                     }
                 }    
             } 
         }
         nearbyVertices = new Vector3[ nearbyVertexDataList.Count ];
         nearbyIndices = new int[ nearbyVertexDataList.Count ];
+        nearbyVertexData = new VertexData[ nearbyVertexDataList.Count ];
 
         for ( int i = 0; i < nearbyVertexDataList.Count; i++ ) {
+            nearbyVertexData[ i ]= nearbyVertexDataList[ i ];
             nearbyVertices[ i ] = nearbyVertexDataList[ i ].Position;
             nearbyIndices[ i ] = nearbyVertexDataList[ i ].Index;
         }
@@ -261,8 +266,18 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
         DeformedMesh.RecalculateBounds();
     }
 
-    public void EraseVertices ( Vector3[] erasedVertices ) {
-        //Delete vertices from mesh
+    private void EraseVertices ( VertexData[] erasedVertices ) {
+        //the erase function will reset the points in the sphere/plane back to their original position 
+
+        for ( int i = 0; i < erasedVertices.Length; i++ ) {
+            int index = erasedVertices[i].Index;
+            displacedVertices[ index ] = originalVertices [index];
+        }
+        DeformedMesh.vertices = displacedVertices;
+        DeformedMesh.RecalculateNormals();
+        DeformedMesh.RecalculateBounds();
+        RefreshOctree();
+
     }
 
     //This function refreshes the data structure when vertices are moved.
@@ -283,7 +298,9 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
 
     //This function will undo the last manipulation to the mesh.
     public void UndoChange () {
-        displacedVertices = storedVertices;
+        UnityEngine.Debug.Log(""+storedVerticesList.Count);
+        displacedVertices = storedVerticesList [storedVerticesList.Count -2];
+        storedVerticesList.RemoveAt( storedVerticesList.Count - 1 );
         DeformedMesh.vertices = displacedVertices;
         DeformedMesh.RecalculateNormals();
         DeformedMesh.RecalculateBounds();
@@ -293,7 +310,9 @@ public class MeshManipulator : MonoBehaviour, IMixedRealityPointerHandler {
     //This function will reset the mesh to the initial starting mesh.
     public void ResetMesh () {
         DeformedMesh.vertices = originalVertices;
-        displacedVertices = storedVertices = (Vector3[])originalVertices.Clone();
+        storedVerticesList.Clear();
+        displacedVertices = (Vector3[])originalVertices.Clone();
+        storedVerticesList.Add( displacedVertices );
         DeformedMesh.RecalculateNormals();
         DeformedMesh.RecalculateBounds();
         RefreshOctree();
