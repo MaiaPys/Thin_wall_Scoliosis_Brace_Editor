@@ -1,7 +1,10 @@
-Library/
-Builds/
-Logs/
-Packages/
-obj/
-Temp/
-TestBuilds/
+Library/*
+Builds/*
+Logs/*
+.vs/*
+UserSettings/*
+*.csproj
+*.sln
+obj/*
+Temp/*
+TestBuilds/*
